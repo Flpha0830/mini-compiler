@@ -72,14 +72,12 @@ impl Tokenizer {
         let line = self.scanner.get_line();
         let column = self.scanner.get_column();
         let scanner = &mut self.scanner;
-
-
         
         // get the next character
         let mut c = unwrap_or_return!(scanner.next());
 
         // skip white spaces
-        if c == ' ' {
+        if c.is_whitespace() {
             return self.next()
         }
 
@@ -103,7 +101,108 @@ impl Tokenizer {
             }
         }
 
+        if self.char_map.contains_key(&c) {
+            return Ok(Token::new(self.char_map.get(&c).unwrap().clone(), "", line, column));
+        }
 
+        match (c, unwrap_or_return!(scanner.peek())) {
+            ('&','&') => return Ok(Token::new(TokenClass::LOGAND, "", line, column)),
+            ('&', _ ) => return Ok(Token::new(TokenClass::AND, "", line, column)),
+            ('=','=') => return Ok(Token::new(TokenClass::EQ, "", line, column)),
+            ('=', _ ) => return Ok(Token::new(TokenClass::ASSIGN, "", line, column)),
+            ('|','|') => return Ok(Token::new(TokenClass::LOGOR, "", line, column)),
+            ('!','=') => return Ok(Token::new(TokenClass::NE, "", line, column)),
+            ('<','=') => return Ok(Token::new(TokenClass::LE, "", line, column)),
+            ('<', _ ) => return Ok(Token::new(TokenClass::LT, "", line, column)),
+            ('>','=') => return Ok(Token::new(TokenClass::GE, "", line, column)),
+            ('>', _ ) => return Ok(Token::new(TokenClass::GT, "", line, column)),
+            _ => { }
+        }
+
+        if c.is_ascii_digit() {
+            let mut data = String::new();
+            while c.is_ascii_digit() {
+                data.push(c);
+                unwrap_or_return!(scanner.next());
+                c = unwrap_or_return!(scanner.peek());
+            }
+
+            return Ok(Token::new(TokenClass::INTLITERAL, data.as_str(), line, column));
+        }
+
+        if c == '\'' {
+            if(unwrap_or_return!(scanner.peek()) == '\'') {
+                self.error(c, line, column);
+                return Ok(Token::new(TokenClass::INVALID, "",line, column));
+            }
+
+            let mut data = String::new();
+            c = unwrap_or_return!(scanner.next());
+            while c != '\'' || data.eq("\\") {
+                data.push(c);
+                c = unwrap_or_return!(scanner.next());
+            }
+
+            if data.len() == 1 {
+                return Ok(Token::new(TokenClass::CHARLITERAL, data.as_str(), line, column));
+            }
+
+            if self.escape_map.contains_key(data.as_str()) {
+                return Ok(Token::new(TokenClass::CHARLITERAL, self.escape_map.get(data.as_str()).unwrap(), line, column));
+            }
+
+            self.error(c, line, column);
+            return Ok(Token::new(TokenClass::INVALID, "", line, column));
+        }
+
+        if c == '"' {
+            let mut data = String::new();
+            c = unwrap_or_return!(scanner.peek());
+            while c != '"' {
+                data.push(c);
+                unwrap_or_return!(scanner.next());
+                c = unwrap_or_return!(scanner.peek());
+            }
+            unwrap_or_return!(scanner.next());
+            return Ok(Token::new(TokenClass::STRINGLITERAL, data.as_str(), line, column));
+        }
+
+        if c.is_ascii_alphabetic() || c == '#' || c == '_' {
+            let mut data = String::new();
+            if c == '#'  {
+                c = unwrap_or_return!(scanner.next());
+                data.push(c);
+                for e in "includ".chars() {
+                    if c != e {
+                        break;
+                    } else {
+                        c = unwrap_or_return!(scanner.next());
+                        data.push(c);
+                    }
+                }
+
+                if data.eq("include") {
+                    return Ok(Token::new(TokenClass::INCLUDE, data.as_str(), line, column));
+                } else {
+                    self.error('#', line, column);
+                    return Ok(Token::new(TokenClass::INVALID, "", line, column));
+                }
+            } else {
+                data.push(c);
+            }
+
+            c = unwrap_or_return!(scanner.peek());
+            while c.is_ascii_alphanumeric() || c == '_' {
+                data.push(c);
+                unwrap_or_return!(scanner.next());
+                c = unwrap_or_return!(scanner.peek());
+            }
+
+            if self.key_map.contains_key(data.as_str()) {
+                return Ok(Token::new(self.key_map.get(data.as_str()).unwrap().clone(), "", line, column));
+            }
+            return Ok(Token::new(TokenClass::IDENTIFIER, data.as_str(), line, column));
+        }
 
         // if we reach this point, it means we did not recognise a valid token
         self.error(c, line, column);

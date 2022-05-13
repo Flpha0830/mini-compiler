@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use crate::lexer::position::Position;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TokenClass {
     // the \ (backslash) is used as an escape character in the regular expression below
     // ' is used to enclose character while " is used to enclose strings
