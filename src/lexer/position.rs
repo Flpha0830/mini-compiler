@@ -14,7 +14,7 @@ impl Position {
     }
 }
 
-impl Display for Position{
+impl Display for Position {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.line, self.column)
     }

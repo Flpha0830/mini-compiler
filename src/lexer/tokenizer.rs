@@ -106,21 +106,23 @@ impl Tokenizer {
         }
 
         match (c, unwrap_or_return!(scanner.peek())) {
-            ('&','&') => return Ok(Token::new(TokenClass::LOGAND, "", line, column)),
+            ('&','&') => { unwrap_or_return!(scanner.next()); return Ok(Token::new(TokenClass::LOGAND, "", line, column)) },
+            ('=','=') => { unwrap_or_return!(scanner.next()); return Ok(Token::new(TokenClass::EQ, "", line, column)) },
+            ('|','|') => { unwrap_or_return!(scanner.next()); return Ok(Token::new(TokenClass::LOGOR, "", line, column)) },
+            ('!','=') => { unwrap_or_return!(scanner.next()); return Ok(Token::new(TokenClass::NE, "", line, column)) },
+            ('<','=') => { unwrap_or_return!(scanner.next()); return Ok(Token::new(TokenClass::LE, "", line, column)) },
+            ('>','=') => { unwrap_or_return!(scanner.next()); return Ok(Token::new(TokenClass::GE, "", line, column)) },
             ('&', _ ) => return Ok(Token::new(TokenClass::AND, "", line, column)),
-            ('=','=') => return Ok(Token::new(TokenClass::EQ, "", line, column)),
             ('=', _ ) => return Ok(Token::new(TokenClass::ASSIGN, "", line, column)),
-            ('|','|') => return Ok(Token::new(TokenClass::LOGOR, "", line, column)),
-            ('!','=') => return Ok(Token::new(TokenClass::NE, "", line, column)),
-            ('<','=') => return Ok(Token::new(TokenClass::LE, "", line, column)),
             ('<', _ ) => return Ok(Token::new(TokenClass::LT, "", line, column)),
-            ('>','=') => return Ok(Token::new(TokenClass::GE, "", line, column)),
             ('>', _ ) => return Ok(Token::new(TokenClass::GT, "", line, column)),
             _ => { }
         }
 
         if c.is_ascii_digit() {
             let mut data = String::new();
+            data.push(c);
+            c = unwrap_or_return!(scanner.peek());
             while c.is_ascii_digit() {
                 data.push(c);
                 unwrap_or_return!(scanner.next());

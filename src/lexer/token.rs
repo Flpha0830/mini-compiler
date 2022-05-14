@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use crate::lexer::position::Position;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenClass {
     // the \ (backslash) is used as an escape character in the regular expression below
     // ' is used to enclose character while " is used to enclose strings
@@ -74,10 +74,16 @@ pub enum TokenClass {
     NEW       // new
 }
 
+impl Display for TokenClass {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 pub struct Token {
     pub token_class: TokenClass,
-    data: String,
-    position: Position,
+    pub data: String,
+    pub position: Position,
 }
 
 impl Token {

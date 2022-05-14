@@ -5,8 +5,11 @@ use lexer::token::TokenClass;
 
 use crate::lexer::scanner::Scanner;
 use crate::lexer::tokenizer::Tokenizer;
+use crate::parser::parser::Parser;
 
 mod lexer;
+mod parser;
+mod ast;
 
 static FILE_NOT_FOUND: i32 = 2;
 static MODE_FAIL: i32      = 254;
@@ -73,8 +76,15 @@ fn main() {
             }
         },
         Mode::PARSER =>  {
-            println!("Parser not implemented");
-            std::process::exit(MODE_FAIL)
+            let mut parser = Parser::new(tokenizer);
+            parser.parse();
+            if parser.get_error_count() == 0 {
+                println!("Parsing: pass");
+                std::process::exit(PASS);
+            } else {
+                println!("Parsing: failed ({} errors)", parser.get_error_count());
+                std::process::exit(PARSER_FAIL);
+            }
         },
         Mode::AST => {
             println!("AST building not implemented");
