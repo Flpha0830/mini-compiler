@@ -1,4 +1,5 @@
-use crate::ast::ast_node::ASTNode;
+use std::any::Any;
+use crate::ast::ast_node::{ASTNode, AToAny};
 use crate::ast::ast_visitor::ASTVisitor;
 use crate::ast::decl::VarDecl;
 use crate::ast::expr::Expr;
@@ -49,11 +50,11 @@ impl ASTNode for While {
 pub struct If {
     pub expr: Box<dyn Expr>,
     pub stmt1: Box<dyn Stmt>,
-    pub stmt2: Box<dyn Stmt>
+    pub stmt2: Option<Box<dyn Stmt>>
 }
 
 impl If {
-    pub fn new(expr: Box<dyn Expr>, stmt1: Box<dyn Stmt>, stmt2: Box<dyn Stmt>) -> Box<Self> {
+    pub fn new(expr: Box<dyn Expr>, stmt1: Box<dyn Stmt>, stmt2: Option<Box<dyn Stmt>>) -> Box<Self> {
         Box::new(If {
             expr,
             stmt1,
@@ -91,11 +92,11 @@ impl ASTNode for Assign {
 
 /// Return
 pub struct Return {
-    pub expr: Box<dyn Expr>
+    pub expr: Option<Box<dyn Expr>>
 }
 
 impl Return {
-    pub fn new(expr: Box<dyn Expr>) -> Box<Self> {
+    pub fn new(expr: Option<Box<dyn Expr>>) -> Box<Self> {
         Box::new(Return {
             expr
         })
@@ -110,7 +111,7 @@ impl ASTNode for Return {
 
 /// ExprStmt
 pub struct ExprStmt {
-    expr: Box<dyn Expr>,
+    pub expr: Box<dyn Expr>,
 }
 
 impl ExprStmt {
@@ -128,12 +129,77 @@ impl ASTNode for ExprStmt {
 }
 
 /// Stmt
-pub trait Stmt { }
+pub trait Stmt: AToAny { }
+
+impl AToAny for Block {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
 
 impl Stmt for Block { }
+
+impl AToAny for While {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
 impl Stmt for While { }
+
+impl AToAny for If {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
 impl Stmt for If { }
+
+impl AToAny for Assign {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
 impl Stmt for Assign { }
+
+impl AToAny for Return {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
 impl Stmt for Return { }
+
+impl AToAny for ExprStmt {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
 impl Stmt for ExprStmt { }
 

@@ -1,4 +1,6 @@
-use crate::ast::ast_node::ASTNode;
+use std::any::Any;
+use std::fmt::{Display, Formatter};
+use crate::ast::ast_node::{ASTNode, AToAny};
 use crate::ast::ast_visitor::ASTVisitor;
 use crate::ast::decl::{FunDecl, VarDecl};
 use crate::ast::stmt::Block;
@@ -6,18 +8,18 @@ use crate::ast::types::{BaseType, Type};
 
 /// IntLiteral
 pub struct IntLiteral {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    i: i32
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub i: i32
 }
 
 impl IntLiteral {
-    pub fn new(i: i32) -> Self {
-        IntLiteral {
+    pub fn new(data: String) -> Box<Self> {
+        Box::new(IntLiteral {
             expr_type: Box::new(BaseType::VOID),
             is_grouped: false,
-            i
-        }
+            i: data.parse::<i32>().unwrap()
+        })
     }
 }
 
@@ -29,18 +31,18 @@ impl ASTNode for IntLiteral {
 
 /// StrLiteral
 pub struct StrLiteral {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    string: String
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub string: String
 }
 
 impl StrLiteral {
-    pub fn new(string: String) -> Self {
-        StrLiteral {
+    pub fn new(string: String) -> Box<Self> {
+        Box::new(StrLiteral {
             expr_type: Box::new(BaseType::VOID),
             is_grouped: false,
             string
-        }
+        })
     }
 }
 
@@ -52,18 +54,18 @@ impl ASTNode for StrLiteral {
 
 /// ChrLiteral
 pub struct ChrLiteral {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    c: char
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub c: char
 }
 
 impl ChrLiteral {
-    pub fn new(data: String) -> Self {
-        ChrLiteral {
+    pub fn new(data: String) -> Box<Self> {
+        Box::new(ChrLiteral {
             expr_type: Box::new(BaseType::VOID),
             is_grouped: false,
             c: data.chars().next().unwrap()
-        }
+        })
     }
 }
 
@@ -75,20 +77,20 @@ impl ASTNode for ChrLiteral {
 
 /// VarExpr
 pub struct VarExpr {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    name: String,
-    var_decl: VarDecl // to be filled in by the name analyser
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub name: String,
+    pub var_decl: VarDecl // to be filled in by the name analyser
 }
 
 impl VarExpr {
-    pub fn new(name: String) -> Self {
-        VarExpr {
+    pub fn new(name: String) -> Box<Self> {
+        Box::new(VarExpr {
             expr_type: Box::new(BaseType::VOID),
             is_grouped: false,
             name,
             var_decl: VarDecl::new(Box::new(BaseType::VOID), "".to_string())
-        }
+        })
     }
 }
 
@@ -100,22 +102,22 @@ impl ASTNode for VarExpr {
 
 /// FunCallExpr
 pub struct FunCallExpr {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    name: String,
-    exprs: Vec<Box<dyn Expr>>,
-    fun_decl: FunDecl
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub name: String,
+    pub exprs: Vec<Box<dyn Expr>>,
+    pub fun_decl: FunDecl
 }
 
 impl FunCallExpr {
-    pub fn new(name: String, exprs: Vec<Box<dyn Expr>>) -> Self {
-        FunCallExpr {
+    pub fn new(name: String, exprs: Vec<Box<dyn Expr>>) -> Box<Self> {
+        Box::new(FunCallExpr {
             expr_type: Box::new(BaseType::VOID),
             is_grouped: false,
             name,
             exprs,
             fun_decl: FunDecl::new(Box::new(BaseType::VOID), "".to_string(), vec![], Block { var_decls: vec![], stmts: vec![] })
-        }
+        })
     }
 }
 
@@ -127,11 +129,11 @@ impl ASTNode for FunCallExpr {
 
 /// BinOp
 pub struct BinOp {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    op: Op,
-    expr1: Box<dyn Expr>,
-    expr2: Box<dyn Expr>
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub op: Op,
+    pub expr1: Box<dyn Expr>,
+    pub expr2: Box<dyn Expr>
 }
 
 impl BinOp {
@@ -153,8 +155,29 @@ impl ASTNode for BinOp {
 }
 
 /// Op
+#[derive(Clone, Copy)]
 pub enum Op {
     ADD , SUB , MUL , DIV , MOD , GT , LT , GE , LE , NE , EQ , OR , AND
+}
+
+impl Display for Op {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Op::ADD => write!(f, "ADD"),
+            Op::SUB => write!(f, "SUB"),
+            Op::MUL => write!(f, "MUL"),
+            Op::DIV => write!(f, "DIV"),
+            Op::MOD => write!(f, "MOD"),
+            Op::GT => write!(f, "GT"),
+            Op::GE => write!(f, "GE"),
+            Op::LT => write!(f, "LT"),
+            Op::LE => write!(f, "LE"),
+            Op::NE => write!(f, "NE"),
+            Op::EQ => write!(f, "EQ"),
+            Op::OR => write!(f, "OR"),
+            Op::AND => write!(f, "AND"),
+        }
+    }
 }
 
 impl ASTNode for Op{
@@ -165,10 +188,10 @@ impl ASTNode for Op{
 
 /// ArrayAccessExpr
 pub struct ArrayAccessExpr {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    expr1: Box<dyn Expr>,
-    expr2: Box<dyn Expr>
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub expr1: Box<dyn Expr>,
+    pub expr2: Box<dyn Expr>
 }
 
 impl ArrayAccessExpr {
@@ -190,20 +213,20 @@ impl ASTNode for ArrayAccessExpr {
 
 /// FieldAccessExpr
 pub struct FieldAccessExpr {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    expr: Box<dyn Expr>,
-    name: String
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub expr: Box<dyn Expr>,
+    pub name: String
 }
 
 impl FieldAccessExpr {
-    pub fn new(expr: Box<dyn Expr>, name: String) -> Self {
-        FieldAccessExpr {
+    pub fn new(expr: Box<dyn Expr>, name: String) -> Box<Self> {
+        Box::new(FieldAccessExpr {
             expr_type: Box::new(BaseType::VOID),
             is_grouped: false,
             expr,
             name
-        }
+        })
     }
 }
 
@@ -215,9 +238,9 @@ impl ASTNode for FieldAccessExpr {
 
 /// ValueAtExpr
 pub struct ValueAtExpr {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    expr: Box<dyn Expr>,
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub expr: Box<dyn Expr>,
 }
 
 impl ValueAtExpr {
@@ -238,9 +261,9 @@ impl ASTNode for ValueAtExpr {
 
 /// AddressOfExpr
 pub struct AddressOfExpr {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    expr: Box<dyn Expr>,
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub expr: Box<dyn Expr>,
 }
 
 impl AddressOfExpr {
@@ -261,9 +284,9 @@ impl ASTNode for AddressOfExpr {
 
 /// SizeOfExpr
 pub struct SizeOfExpr {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    sizeof_type: Box<dyn Type>,
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub sizeof_type: Box<dyn Type>,
 }
 
 impl SizeOfExpr {
@@ -284,10 +307,10 @@ impl ASTNode for SizeOfExpr {
 
 /// TypecastExpr
 pub struct TypecastExpr {
-    expr_type: Box<dyn Type>,
-    is_grouped: bool,
-    typecast_type: Box<dyn Type>,
-    expr: Box<dyn Expr>,
+    pub expr_type: Box<dyn Type>,
+    pub is_grouped: bool,
+    pub typecast_type: Box<dyn Type>,
+    pub expr: Box<dyn Expr>,
 }
 
 impl TypecastExpr {
@@ -308,18 +331,247 @@ impl ASTNode for TypecastExpr {
 }
 
 /// Expr
+pub trait Expr: AToAny {
+    fn get_is_grouped(&self) -> bool;
+    fn set_is_grouped(&mut self, is_grouped: bool);
+}
 
-pub trait Expr { }
+impl AToAny for IntLiteral {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-impl Expr for IntLiteral { }
-impl Expr for StrLiteral { }
-impl Expr for ChrLiteral { }
-impl Expr for VarExpr { }
-impl Expr for FunCallExpr { }
-impl Expr for BinOp { }
-impl Expr for ArrayAccessExpr { }
-impl Expr for FieldAccessExpr { }
-impl Expr for ValueAtExpr { }
-impl Expr for AddressOfExpr { }
-impl Expr for SizeOfExpr { }
-impl Expr for TypecastExpr { }
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for IntLiteral {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for StrLiteral {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for StrLiteral {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for ChrLiteral {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for ChrLiteral {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for VarExpr {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for VarExpr {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for FunCallExpr {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for FunCallExpr {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for BinOp {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for BinOp {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for ArrayAccessExpr {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for ArrayAccessExpr {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for FieldAccessExpr {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for FieldAccessExpr {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for ValueAtExpr {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for ValueAtExpr {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for AddressOfExpr {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for AddressOfExpr {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for SizeOfExpr {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for SizeOfExpr {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}
+
+impl AToAny for TypecastExpr {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Expr for TypecastExpr {
+    fn get_is_grouped(&self) -> bool {
+        self.is_grouped
+    }
+
+    fn set_is_grouped(&mut self, is_grouped: bool) {
+        self.is_grouped = is_grouped
+    }
+}

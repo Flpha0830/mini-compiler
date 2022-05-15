@@ -2,13 +2,15 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use crate::lexer::token::Token;
 use crate::{TokenClass, Tokenizer};
-use crate::ast::decl::{Program, StructTypeDecl, VarDecl};
-use crate::ast::types::StructType;
+use crate::ast::decl::{FunDecl, Program, StructTypeDecl, VarDecl};
+use crate::ast::expr::{AddressOfExpr, ArrayAccessExpr, BinOp, ChrLiteral, Expr, FieldAccessExpr, FunCallExpr, IntLiteral, Op, SizeOfExpr, StrLiteral, TypecastExpr, ValueAtExpr, VarExpr};
+use crate::ast::stmt::{Assign, Block, ExprStmt, If, Return, Stmt, While};
+use crate::ast::types::{ArrayType, BaseType, PointerType, StructType, Type};
 
 
 macro_rules! return_if {
-    ( $e:expr ) => {
-        if $e { return; }
+    ( $e:expr; $list:ident ) => {
+        if $e { return $list; }
     }
 }
 
@@ -116,19 +118,17 @@ impl Parser {
         return result;
     }
 
-    pub fn parse(&mut self) {
-        self.parse_program();
+    pub fn parse(&mut self) -> Program {
+        self.parse_program()
     }
 
     fn parse_program(&mut self) -> Program {
         self.parse_includes();
-        let mut struct_decls = self.parse_struct_decls();
-        println!("{:?}",struct_decls.len());
-        println!("{:?}",struct_decls.pop().unwrap().struct_type.name);
-        self.parse_var_decls();
-        self.parse_fun_decls();
+        let struct_decls = self.parse_struct_decls();
+        let var_decls = self.parse_var_decls();
+        let fun_decls = self.parse_fun_decls();
         self.expect(&[TokenClass::EOF]);
-        Program::new(struct_decls, Vec::new(),Vec::new())
+        Program::new(struct_decls, var_decls,fun_decls)
     }
 
     // includes are ignored, so does not need to return an AST node
@@ -142,10 +142,7 @@ impl Parser {
 
     fn parse_struct_decls(&mut self) -> Vec<StructTypeDecl> {
         let mut struct_decls = Vec::new();
-        // return_if!(!self.accept(&[TokenClass::STRUCT]) || !(self.look_a_head(2).token_class == TokenClass::LBRA));
-        if !self.accept(&[TokenClass::STRUCT]) || !(self.look_a_head(2).token_class == TokenClass::LBRA) {
-            return struct_decls;
-        }
+        return_if!(!self.accept(&[TokenClass::STRUCT]) || !(self.look_a_head(2).token_class == TokenClass::LBRA); struct_decls);
 
         self.next_token();
         let mut struct_type_name = String::from("");
@@ -153,23 +150,23 @@ impl Parser {
             struct_type_name = self.token.data.to_owned();
             self.next_token();
         }
-        let structType = StructType::new(struct_type_name);
+        let struct_type = StructType::new(struct_type_name);
 
         self.expect(&[TokenClass::LBRA]);
 
-        self.parse_var_decls();
+        let var_decls = self.parse_var_decls();
 
         self.expect(&[TokenClass::RBRA]);
         self.expect(&[TokenClass::SC]);
 
-        struct_decls.push(StructTypeDecl::new(structType, Vec::new()));
-        let mut return_struct_decls = self.parse_struct_decls();
-        struct_decls.append(&mut return_struct_decls);
+        struct_decls.push(StructTypeDecl::new(struct_type, var_decls));
+        struct_decls.append(&mut self.parse_struct_decls());
         struct_decls
     }
 
-    fn parse_var_decls(&mut self) {
-        return_if!(!self.accept(&[TokenClass::INT, TokenClass::CHAR, TokenClass::VOID, TokenClass::STRUCT]));
+    fn parse_var_decls(&mut self) -> Vec<VarDecl> {
+        let mut var_decls = Vec::new();
+        return_if!(!self.accept(&[TokenClass::INT, TokenClass::CHAR, TokenClass::VOID, TokenClass::STRUCT]); var_decls);
 
         let tmp;
         if self.accept(&[TokenClass::STRUCT]) {
@@ -177,12 +174,11 @@ impl Parser {
         } else {
             tmp = if self.look_a_head(1).token_class == TokenClass::ASTERIX { self.look_a_head(3).token_class.clone() } else { self.look_a_head(2).token_class.clone() };
         }
-        return_if!(tmp != TokenClass::SC && tmp != TokenClass::LSBR);
+        return_if!(tmp != TokenClass::SC && tmp != TokenClass::LSBR; var_decls);
 
-        // List<VarDecl> returnVarDecl;
-        self.parse_type();
+        let mut a_type = self.parse_type();
 
-        let type_name;
+        let mut type_name= String::from("");
         if self.accept(&[TokenClass::IDENTIFIER]) {
             type_name = self.token.data.to_owned();
             self.next_token();
@@ -199,17 +195,17 @@ impl Parser {
             }
             self.expect(&[TokenClass::RSBR]);
             self.expect(&[TokenClass::SC]);
-            // type = new ArrayType(type, i);
+            a_type = Box::new(ArrayType::new(a_type, i));
         }
 
-        // varDecls.add(new VarDecl(type, type_name));
-
-        self.parse_var_decls();
-        // varDecls.addAll(returnVarDecl);
+        var_decls.push(VarDecl::new(a_type, type_name));
+        var_decls.append(&mut self.parse_var_decls());
+        var_decls
     }
 
-    fn parse_fun_decls(&mut self) {
-        return_if!(!self.accept(&[TokenClass::INT, TokenClass::CHAR, TokenClass::VOID, TokenClass::STRUCT]));
+    fn parse_fun_decls(&mut self) -> Vec<FunDecl> {
+        let mut fun_decls = Vec::new();
+        return_if!(!self.accept(&[TokenClass::INT, TokenClass::CHAR, TokenClass::VOID, TokenClass::STRUCT]); fun_decls);
 
         let tmp;
         if self.accept(&[TokenClass::STRUCT]) {
@@ -217,278 +213,320 @@ impl Parser {
         } else {
             tmp = if self.look_a_head(1).token_class == TokenClass::ASTERIX { self.look_a_head(3).token_class.clone() } else { self.look_a_head(2).token_class.clone() };
         }
-        return_if!(tmp != TokenClass::LPAR);
-        // List<FunDecl> returnFunDecls;
+        return_if!(tmp != TokenClass::LPAR; fun_decls);
 
-        self.parse_type();
-        let fun_name;
+        let a_type = self.parse_type();
+        let mut fun_name= String::from("");
         if self.accept(&[TokenClass::IDENTIFIER]){
             fun_name = self.token.data.to_owned();
             self.next_token();
         }
 
         self.expect(&[TokenClass::LPAR]);
-        self.parse_params();
+        let params = self.parse_params();
 
         self.expect(&[TokenClass::RPAR]);
-        self.parse_block();
+        let block = self.parse_block();
 
-        // funDecls.add(new FunDecl(type,fun_name,varDecls, block));
-        self.parse_fun_decls();
-
-        // funDecls.addAll(returnFunDecls);
+        fun_decls.push(FunDecl::new(a_type, fun_name, params, block));
+        fun_decls.append(&mut self.parse_fun_decls());
+        fun_decls
     }
 
-    fn parse_params(&mut self) {
-        return_if!(!self.accept(&[TokenClass::INT, TokenClass::CHAR, TokenClass::VOID, TokenClass::STRUCT]));
+    fn parse_params(&mut self) -> Vec<VarDecl> {
+        let mut params = Vec::new();
+        return_if!(!self.accept(&[TokenClass::INT, TokenClass::CHAR, TokenClass::VOID, TokenClass::STRUCT]); params);
 
         loop {
             if self.accept(&[TokenClass::COMMA]) { self.next_token(); }
-            self.parse_type();
-            let var_name;
+            let a_type = self.parse_type();
+            let mut var_name = String::from("");
             if self.accept(&[TokenClass::IDENTIFIER]) {
                 var_name = self.token.data.to_owned();
                 self.next_token();
             }
-            // varDecls.add(new VarDecl(type, var_name));
+            params.push(VarDecl::new(a_type, var_name));
 
             if !self.accept(&[TokenClass::COMMA]) { break; }
         }
+        params
     }
 
-    fn parse_block(&mut self) {
+    fn parse_block(&mut self) -> Block {
 
         self.expect(&[TokenClass::LBRA]);
 
-        self.parse_var_decls();
-        // List<Stmt> stmts = new ArrayList<>();
+        let var_decls = self.parse_var_decls();
+        let mut stmts = Vec::new();
 
-        while !self.accept(&[TokenClass::RBRA, TokenClass::EOF]) { self.parse_stmt() };
+        while !self.accept(&[TokenClass::RBRA, TokenClass::EOF]) { stmts.push(self.parse_stmt()) };
         self.expect(&[TokenClass::RBRA]);
-        // return new Block(varDecls, stmts);
+        Block::new(var_decls, stmts)
     }
 
-    fn parse_stmt(&mut self) {
-        if self.accept(&[TokenClass::LBRA]) {
-            return self.parse_block();
+    fn parse_stmt(&mut self) -> Box<dyn Stmt> {
+        return if self.accept(&[TokenClass::LBRA]) {
+            Box::new(self.parse_block())
         } else if self.accept(&[TokenClass::WHILE]) {
             self.next_token();
             self.expect(&[TokenClass::LPAR]);
-            self.parse_exp();
+            let expr = self.parse_exp();
             self.expect(&[TokenClass::RPAR]);
-            self.parse_stmt();
-            // return new While(expr, stmt);
+            let stmt = self.parse_stmt();
+            While::new(expr, stmt)
         } else if self.accept(&[TokenClass::IF]) {
             self.next_token();
             self.expect(&[TokenClass::LPAR]);
-            self.parse_exp();
+            let expr = self.parse_exp();
             self.expect(&[TokenClass::RPAR]);
-            self.parse_stmt();
-            // Stmt stmt2 = null;
+            let stmt1 = self.parse_stmt();
+            let mut stmt2 = None;
 
             if self.accept(&[TokenClass::ELSE]) {
                 self.next_token();
-                self.parse_stmt();
+                stmt2 = Some(self.parse_stmt());
             }
-            // return new If(expr, stmt1, stmt2);
+            If::new(expr, stmt1, stmt2)
         } else if self.accept(&[TokenClass::RETURN]) {
-            // Expr expr = null;
+            let mut expr = None;
             self.next_token();
 
-            if self.accept(&[TokenClass::SC])  {
+            if self.accept(&[TokenClass::SC]) {
                 self.next_token();
             } else {
-                self.parse_exp();
+                expr = Some(self.parse_exp());
                 self.expect(&[TokenClass::SC]);
             }
-            // return new Return(expr);
+            Return::new(expr)
         } else {
-            self.parse_exp();
+            let expr1 = self.parse_exp();
             if self.accept(&[TokenClass::ASSIGN]) {
                 self.next_token();
-                self.parse_exp();
+                let expr2 = self.parse_exp();
                 self.expect(&[TokenClass::SC]);
-                // return new Assign(expr1, expr2);
+                Assign::new(expr1, expr2)
             } else {
                 self.expect(&[TokenClass::SC]);
-                // return new ExprStmt(expr1);
+                ExprStmt::new(expr1)
             }
         }
     }
 
-    fn parse_exp(&mut self) {
-        self.parse_term();
+    fn parse_exp(&mut self) -> Box<dyn Expr> {
+        let mut lhs = self.parse_term().unwrap();
         while self.accept(&[TokenClass::DOT, TokenClass::LSBR, TokenClass::EQ, TokenClass::NE, TokenClass::LT, TokenClass::GT, TokenClass::LE, TokenClass::GE,
             TokenClass::PLUS, TokenClass::MINUS, TokenClass::ASTERIX, TokenClass::DIV, TokenClass::REM, TokenClass::LOGAND, TokenClass::LOGOR]) {
 
-            // int pre = 0;
-            // if(lhs instanceof BinOp)  {
-            //     pre = parsePre(((BinOp) lhs).op);
-            //     if(pre == 4 && ((BinOp) lhs).expr1 instanceof IntLiteral) {
-            //         if(((IntLiteral) ((BinOp) lhs).expr1).i == 0) pre = 2;
+            // let mut pre = 0;
+            // let it = (&lhs).as_any();
+            // if let Some(lhs) = it.downcast_ref::<BinOp>() {
+            //     pre = Parser::parse_pre(lhs.op);
+            //     if let (4, Some(expr1)) = (pre, lhs.expr1.as_any().downcast_ref::<IntLiteral>()) {
+            //         if expr1.i == 0 { pre = 2; }
             //     }
-            // } else if (lhs instanceof TypecastExpr ||
-            //     lhs instanceof ValueAtExpr || lhs instanceof AddressOfExpr) pre = 2;
+            // } else if let Some(_) = it.downcast_ref::<TypecastExpr>() { pre = 2; }
+            // else if let Some(_) = it.downcast_ref::<ValueAtExpr>() { pre = 2; }
+            // else if let Some(_) = it.downcast_ref::<AddressOfExpr>() { pre = 2; }
             //
-            // if(lhs != null && lhs.isGroup) pre = 0;
+            // if lhs.get_is_grouped() { pre = 0; }
 
             if self.accept(&[TokenClass::DOT]) {
                 self.next_token();
-                let name;
+                let mut name = String::from("");
                 if self.accept(&[TokenClass::IDENTIFIER]) {
                     name = self.token.data.to_owned();
                     self.next_token();
                 }
 
-                // if(pre != 0)  {
-                //     if(lhs instanceof TypecastExpr) {
-                //         lhs = new TypecastExpr(((TypecastExpr) lhs).type, new FieldAccessExpr(((TypecastExpr) lhs).expr, name));
-                //     } else if(lhs instanceof ValueAtExpr) {
-                //         lhs = new ValueAtExpr(new FieldAccessExpr(((ValueAtExpr) lhs).expr, name));
-                //     } else if(lhs instanceof AddressOfExpr) {
-                //         lhs = new AddressOfExpr(new FieldAccessExpr(((AddressOfExpr) lhs).expr, name));
-                //     } else {
-                //         lhs = new BinOp(((BinOp) lhs).expr1, ((BinOp) lhs).op, new FieldAccessExpr(((BinOp) lhs).expr2, name));
+                // if pre != 0 {
+                //     if let Some(cast_lhs) = it.downcast_ref::<TypecastExpr>() {
+                //         lhs = TypecastExpr::new(cast_lhs.typecast_type.into(), FieldAccessExpr::new(cast_lhs.expr.into(), name));
+                //     } else if let Some(cast_lhs) = it.downcast_ref::<ValueAtExpr>() {
+                //         lhs = ValueAtExpr::new(FieldAccessExpr::new(cast_lhs.expr.into(), name));
+                //     } else if let Some(cast_lhs) = it.downcast_ref::<AddressOfExpr>() {
+                //         lhs = AddressOfExpr::new(FieldAccessExpr::new(cast_lhs.expr.into(), name));
+                //     } else if let Some(cast_lhs) = it.downcast_ref::<BinOp>() {
+                //         lhs = BinOp::new(cast_lhs.expr1.into(), cast_lhs.op, FieldAccessExpr::new(cast_lhs.expr2.into(), name));
                 //     }
+                // } else {
+                //     lhs = FieldAccessExpr::new( lhs, name);
                 // }
-                // else lhs = new FieldAccessExpr(lhs, name);
+                lhs = FieldAccessExpr::new( lhs, name);
             } else if self.accept(&[TokenClass::LSBR]) {
 
                 self.next_token();
-                self.parse_exp();
+                let rhs = self.parse_exp();
                 self.expect(&[TokenClass::RSBR]);
 
-                // if(pre != 0) {
-                //     if(lhs instanceof TypecastExpr) {
-                //         lhs = new TypecastExpr(((TypecastExpr) lhs).type, new ArrayAccessExpr(((TypecastExpr) lhs).expr, rhs));
-                //     } else if(lhs instanceof ValueAtExpr) {
-                //         lhs = new ValueAtExpr(new ArrayAccessExpr(((ValueAtExpr) lhs).expr, rhs));
-                //     } else if(lhs instanceof AddressOfExpr) {
-                //         lhs = new AddressOfExpr(new ArrayAccessExpr(((AddressOfExpr) lhs).expr, rhs));
-                //     } else {
-                //         if(((BinOp) lhs).expr2 instanceof BinOp) {
-                //             BinOp binOp = new BinOp(((BinOp) ((BinOp) lhs).expr2).expr1, ((BinOp) ((BinOp) lhs).expr2).op, new ArrayAccessExpr(((BinOp) ((BinOp) lhs).expr2).expr2, rhs));
-                //             lhs = new BinOp(((BinOp) lhs).expr1, ((BinOp) lhs).op, binOp);
+                // if pre != 0 {
+                //     if let Some(&cast_lhs) = it.downcast_ref::<TypecastExpr>() {
+                //         lhs = TypecastExpr::new(cast_lhs.typecast_type, ArrayAccessExpr::new(cast_lhs.expr, rhs));
+                //     } else if let Some(&cast_lhs) = it.downcast_ref::<ValueAtExpr>() {
+                //         lhs = ValueAtExpr::new(ArrayAccessExpr::new(cast_lhs.expr, rhs));
+                //     } else if let Some(&cast_lhs) = it.downcast_ref::<AddressOfExpr>() {
+                //         lhs = AddressOfExpr::new(ArrayAccessExpr::new(cast_lhs.expr, rhs));
+                //     } else if let Some(&cast_lhs) = it.downcast_ref::<BinOp>() {
+                //         if let Some(&expr2) = (&cast_lhs.expr2).as_any().downcast_ref::<BinOp>() {
+                //             let new_expr2 = BinOp::new(expr2.expr1, expr2.op, ArrayAccessExpr::new(expr2.expr2, rhs));
+                //             lhs = BinOp::new(cast_lhs.expr1, cast_lhs.op, new_expr2);
                 //         } else {
-                //             lhs = new BinOp(((BinOp) lhs).expr1, ((BinOp) lhs).op, new ArrayAccessExpr(((BinOp) lhs).expr2, rhs));
+                //             lhs = BinOp::new(cast_lhs.expr1, cast_lhs.op, ArrayAccessExpr::new(cast_lhs.expr2, rhs));
                 //         }
                 //     }
+                // } else {
+                //     lhs = ArrayAccessExpr::new(lhs.into(), rhs);
                 // }
-                // else lhs = new ArrayAccessExpr(lhs, rhs);
-
+                lhs = ArrayAccessExpr::new(lhs, rhs);
             } else {
-                // self.parse_op();
+                let op = self.parse_op().unwrap();
                 self.next_token();
 
-                self.parse_term();
+                let rhs = self.parse_term().unwrap();
 
-                // if(pre != 0 && pre > parsePre(op) && lhs instanceof BinOp) lhs = new BinOp(((BinOp) lhs).expr1, ((BinOp) lhs).op, new BinOp(((BinOp) lhs).expr2, op, rhs));
-                // else lhs = new BinOp(lhs, op, rhs);
+                // if let (true, true, Some(&case_lhs)) = (pre != 0, pre > Parser::parse_pre(op), it.downcast_ref::<BinOp>()) {
+                //     lhs = BinOp::new(case_lhs.expr1, case_lhs.op, BinOp::new(case_lhs.expr2, op, rhs));
+                // } else {
+                //     lhs = BinOp::new(lhs.into(), op, rhs);
+                // }
+                lhs = BinOp::new(lhs, op, rhs);
             }
         }
+        lhs
     }
 
-    fn parse_term(&mut self) {
+    fn parse_term(&mut self) -> Option<Box<dyn Expr>> {
         if self.accept(&[TokenClass::LPAR]) {
             self.next_token();
-            if self.accept(&[TokenClass::INT, TokenClass::CHAR, TokenClass::VOID, TokenClass::STRUCT]) {
-                self.parse_type();
+            return if self.accept(&[TokenClass::INT, TokenClass::CHAR, TokenClass::VOID, TokenClass::STRUCT]) {
+                let a_type = self.parse_type();
                 self.expect(&[TokenClass::RPAR]);
-                self.parse_term();
-                // return new TypecastExpr(type, expr);
+                let expr = self.parse_term().unwrap();
+                Some(TypecastExpr::new(a_type, expr))
             } else {
-                self.parse_exp();
+                let mut expr = self.parse_exp();
                 self.expect(&[TokenClass::RPAR]);
-                // expr.isGroup = true;
-                // return expr;
+                expr.set_is_grouped(true);
+                Some(expr)
             }
         } else if self.accept(&[TokenClass::IDENTIFIER]) {
             let name = self.token.data.to_owned();
             self.next_token();
 
             if self.accept(&[TokenClass::LPAR]) {
-                // List<Expr> exprs = new ArrayList<>();
+                let mut exprs = Vec::new();
                 if self.look_a_head(1).token_class != TokenClass::RPAR {
                     loop {
                         self.next_token();
-                        self.parse_exp();
+                        exprs.push(self.parse_exp());
                         if !self.accept(&[TokenClass::COMMA]) { break; }
                     }
                 } else {
                     self.next_token();
                 }
                 self.expect(&[TokenClass::RPAR]);
-                // return new FunCallExpr(name,exprs);
+                return Some(FunCallExpr::new(name,exprs));
             }
-            // return new VarExpr(name);
+            return Some(VarExpr::new(name));
         } else if self.accept(&[TokenClass::MINUS, TokenClass::PLUS, TokenClass::ASTERIX, TokenClass::AND]) {
             let t = self.token.token_class.clone();
 
             self.next_token();
-            self.parse_term();
+            let expr = self.parse_term().unwrap();
 
-            // if(t == TokenClass.MINUS) {
-            //     return new BinOp(new IntLiteral ("0"), Op.SUB, expr);
-            // } else if(t == TokenClass.PLUS) {
-            //     return new BinOp(new IntLiteral("0"), Op.ADD, expr);
-            // } else if(t == TokenClass.ASTERIX) {
-            //     return new ValueAtExpr(expr);
-            // } else {
-            //     return new AddressOfExpr(expr);
-            // }
+            return if t == TokenClass::MINUS {
+                Some(BinOp::new(IntLiteral::new("0".to_owned()), Op::SUB, expr))
+            } else if t == TokenClass::PLUS {
+                Some(BinOp::new(IntLiteral::new("0".to_owned()), Op::ADD, expr))
+            } else if t == TokenClass::ASTERIX {
+                Some(ValueAtExpr::new(expr))
+            } else {
+                Some(AddressOfExpr::new(expr))
+            }
         } else if self.accept(&[TokenClass::SIZEOF]) {
             self.next_token();
             self.expect(&[TokenClass::LPAR]);
 
-            // Type type = parseType();
+            let a_type = self.parse_type();
 
             self.expect(&[TokenClass::RPAR]);
 
-            // return new SizeOfExpr(type);
+            return Some(SizeOfExpr::new(a_type));
         } else if self.accept(&[TokenClass::INTLITERAL, TokenClass::CHARLITERAL, TokenClass::STRINGLITERAL]) {
-            // Expr expr;
-            // if(token.tokenClass == TokenClass.INT_LITERAL) {
-            //     expr = new IntLiteral(token.data);
-            // } else if(token.tokenClass == TokenClass.CHAR_LITERAL) {
-            //     expr = new ChrLiteral(token.data);
-            // } else {
-            //     expr = new StrLiteral(token.data);
-            // }
+            let expr: Box<dyn Expr>;
+            if self.token.token_class == TokenClass::INTLITERAL {
+                expr = IntLiteral::new(self.token.data.to_owned());
+            } else if self.token.token_class == TokenClass::CHARLITERAL {
+                expr = ChrLiteral::new(self.token.data.to_owned());
+            } else {
+                expr = StrLiteral::new(self.token.data.to_owned());
+            }
 
             self.next_token();
-            // return expr;
+            return Some(expr);
         } else {
             self.expect(&[TokenClass::LPAR, TokenClass::IDENTIFIER,
                    TokenClass::MINUS, TokenClass::PLUS, TokenClass::ASTERIX, TokenClass::AND,
                    TokenClass::SIZEOF, TokenClass::INTLITERAL, TokenClass::CHARLITERAL, TokenClass::STRINGLITERAL]);
             self.next_token();
+            None
         }
     }
 
-    fn parse_type(&mut self) {
-        // Type type = null;
+    fn parse_type(&mut self) -> Box<dyn Type> {
+        let mut a_type: Option<Box<dyn Type>> = None;
         if self.accept(&[TokenClass::STRUCT]) {
             self.next_token();
             if self.accept(&[TokenClass::IDENTIFIER]) {
-                // type = new StructType(token.data);
+                a_type = Some(Box::new(StructType::new(self.token.data.to_owned())));
                 self.next_token();
             }
         } else {
             if self.accept(&[TokenClass::INT]) {
-                // type = BaseType.INT;
+                a_type = Some(Box::new(BaseType::INT));
                 self.next_token();
             } else if self.accept(&[TokenClass::VOID]) {
-                // type = BaseType.VOID;
+                a_type = Some(Box::new(BaseType::VOID));
                 self.next_token();
             } else if self.accept(&[TokenClass::CHAR]) {
-                // type = BaseType.CHAR;
+                a_type = Some(Box::new(BaseType::CHAR));
                 self.next_token();
             }
         }
 
         if self.accept(&[TokenClass::ASTERIX]) {
             self.next_token();
-            // return new PointerType(type);
+            return PointerType::new(a_type.unwrap());
+        }
+        a_type.unwrap()
+    }
+
+    fn parse_op(&self) -> Option<Op> {
+        match self.token.token_class {
+            TokenClass::EQ => Some(Op::EQ),
+            TokenClass::NE => Some(Op::NE),
+            TokenClass::LT => Some(Op::LT),
+            TokenClass::GT => Some(Op::GT),
+            TokenClass::LE => Some(Op::LE),
+            TokenClass::GE => Some(Op::GE),
+            TokenClass::PLUS => Some(Op::ADD),
+            TokenClass::MINUS => Some(Op::SUB),
+            TokenClass::ASTERIX => Some(Op::MUL),
+            TokenClass::DIV => Some(Op::DIV),
+            TokenClass::REM => Some(Op::MOD),
+            TokenClass::LOGAND => Some(Op::AND),
+            TokenClass::LOGOR => Some(Op::OR),
+            _ => None
+        }
+    }
+
+    fn parse_pre(op: Op) -> i32 {
+        match op {
+            Op::MUL | Op::DIV | Op::MOD => 3,
+            Op::ADD | Op::SUB => 4,
+            Op::LT  | Op::GT | Op::LE | Op::GE => 5,
+            Op::EQ  | Op::NE => 6,
+            Op::AND => 7,
+            _ => 8
         }
     }
 }

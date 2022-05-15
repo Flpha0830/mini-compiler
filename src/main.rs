@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 use std::env;
 use std::fs::File;
+use std::io::{BufWriter, stdout, Write};
 use lexer::token::TokenClass;
+use crate::ast::ast_node::ASTNode;
+use crate::ast::ast_printer::ASTPrinter;
 
 use crate::lexer::scanner::Scanner;
 use crate::lexer::tokenizer::Tokenizer;
@@ -23,7 +26,7 @@ enum Mode {
 }
 
 fn usage() -> ! {
-    println!("Usage: rustc main.rs pass inputfile outputfile");
+    println!("Usage: rustc main.rs pass inputfile (outputfile)");
     println!("where pass is either: -lexer, -parser, -ast, -sem or -gen");
     std::process::exit(-1);
 }
@@ -32,7 +35,7 @@ fn usage() -> ! {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 4 {
+    if args.len() != 4 && args.len() != 3 {
         usage();
     }
 
@@ -87,8 +90,28 @@ fn main() {
             }
         },
         Mode::AST => {
-            println!("AST building not implemented");
-            std::process::exit(MODE_FAIL)
+            let mut stream = BufWriter::new(Box::new(stdout()));
+
+            for i in 0..10 {
+                stream.write(&[i+1]).unwrap();
+            }
+            stream.flush().unwrap();
+
+
+            let mut parser = Parser::new(tokenizer);
+            let mut program_ast = parser.parse();
+
+            if  parser.get_error_count() == 0 {
+                // let writer = BufWriter::new(File::create(&path).unwrap());
+                let writer = BufWriter::new(stdout());
+
+                program_ast.accept(&mut ASTPrinter::new(writer));
+
+                std::process::exit(PASS)
+            } else {
+                println!("Parsing: failed ({} errors)", parser.get_error_count());
+                std::process::exit(PARSER_FAIL)
+            }
         },
         Mode::SEMANTICANALYSIS => {
             println!("Semantic analysis not implemented");
